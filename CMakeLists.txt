@@ -39,6 +39,16 @@ target_include_directories(LastCrusade PRIVATE
 
 target_link_libraries(LastCrusade PRIVATE SDL2::SDL2 SDL2::SDL2main)
 
+# On Windows, copy SDL2.dll next to the executable after each build
+if(WIN32)
+    add_custom_command(TARGET LastCrusade POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:SDL2::SDL2>
+            $<TARGET_FILE_DIR:LastCrusade>
+        COMMENT "Copying SDL2 DLL to output directory"
+        VERBATIM)
+endif()
+
 # Platform-specific libraries required by miniaudio's backends
 if(APPLE)
     target_link_libraries(LastCrusade PRIVATE
