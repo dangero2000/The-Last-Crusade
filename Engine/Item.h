@@ -7,7 +7,6 @@
 #include "NumberReader.h"
 #include "Random.h"
 #include <string>
-#include <windows.h>
 
 using namespace std;
 

@@ -68,7 +68,7 @@ void Map::loadMap()																					//
 																									//
 	// Map Title sound																				//
 	string titlePath = mapName.c_str();																//
-	titlePath += ".sounds\\";																		//
+	titlePath += ".sounds/";																		//
 	titlePath += mapName.c_str();																	//
 	titlePath += ".wav";																			//
 	mapTitle = new Sound(titlePath);																//
@@ -82,7 +82,7 @@ void Map::loadMap()																					//
 	{																								//
 		string error = filename.c_str();															//
 		error += " not found!";																		//
-		MessageBox(NULL,error.c_str(), "Map Reading Error", MB_ICONERROR | MB_OK);					//
+		fprintf(stderr, "Map Reading Error: %s\n", error.c_str());									//
 		return;																						//
 	}																								//
 																									//
@@ -97,7 +97,7 @@ void Map::loadMap()																					//
 		fread(&sd,sizeof(SOUNDDATA),1,file);														//
 		string filename = sd.sName;																	//
 		string path = mapName.c_str();																//
-		path += ".sounds\\";																		//
+		path += ".sounds/";																		//
 		path += filename;																			//
 		Sound *newSound = (sd.sSpatial) ? new Sound(path,sd.sXCoord,sd.sYCoord) : new Sound(path);	//
 		vecSound.push_back(newSound);																//

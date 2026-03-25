@@ -1,106 +1,119 @@
 /****************************************************************
  *   Prog: The Last Crusade										*
- *     By: Peter S. VanLund										*
+ *     By: Peter S. VanLund									*
  *   Desc: All code written by Peter S. VanLund.				*
  *         Gameplay design, story, & sounds by Patrick Dwyer.	*
+ *         Cross-platform port using SDL2 (Windows/Mac/Linux)	*
  ****************************************************************/
 
 #include "Game.h"
-#include <windows.h>
+#include <SDL2/SDL.h>
+#include <cstring>
+#include <cstdio>
+#ifdef _WIN32
+#include <direct.h>
+#define CHDIR _chdir
+#else
+#include <unistd.h>
+#define CHDIR chdir
+#endif
 
 Game game; // Game engine object
 
-LRESULT CALLBACK WndProc(HWND,UINT,WPARAM,LPARAM); // Windows callback
-
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
-				   PSTR szCmdLine, int iCmdShow)
+// Translate SDL2 key event to engine key code.
+// Letters arrive as lowercase from SDL; convert to uppercase so the
+// engine's switch/case comparisons (e.g. case 'Y':) work correctly.
+static WPARAM translateKey(SDL_Keycode sym)
 {
-	// If a map file is passed in on commandline, load as custom map
-	if(strlen(szCmdLine)>0)
+	switch(sym)
 	{
-		game.addMap(szCmdLine);
+		case SDLK_UP:     return VK_UP;
+		case SDLK_DOWN:   return VK_DOWN;
+		case SDLK_LEFT:   return VK_LEFT;
+		case SDLK_RIGHT:  return VK_RIGHT;
+		case SDLK_SPACE:  return VK_SPACE;
+		case SDLK_ESCAPE: return VK_ESCAPE;
+		default:
+			if(sym >= SDLK_a && sym <= SDLK_z)
+				return (WPARAM)(sym - 32); // lowercase -> uppercase
+			return (WPARAM)sym;
+	}
+}
+
+int main(int argc, char* argv[])
+{
+	// If a map file is passed on the command line, load it as a custom map
+	if(argc > 1 && strlen(argv[1]) > 0)
+	{
+		game.addMap(argv[1]);
 		game.useCustom();
 	}
-	// Otherwise, play game normally
+	// Otherwise, play the game normally
 	else
 	{
 		game.addMap("forest.map");
 		game.addMap("graveyard.map");
 		game.addMap("castle.map");
 	}
-	// Windows jargon
-	char* szAppName = "LastCrusade";
-	HWND hwnd;
-	MSG msg;
-	WNDCLASS wndclass;
 
-	wndclass.style = CS_HREDRAW | CS_VREDRAW;
-	wndclass.lpfnWndProc = WndProc;
-	wndclass.cbClsExtra = 0;
-	wndclass.cbWndExtra = 0;
-	wndclass.hInstance = hInstance;
-	wndclass.hIcon = LoadIcon(NULL,IDI_APPLICATION);
-	wndclass.hCursor = LoadCursor(NULL,IDC_ARROW);
-	wndclass.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
-	wndclass.lpszMenuName = NULL;
-	wndclass.lpszClassName = szAppName;
-
-	if(!RegisterClass(&wndclass))
+	// Initialise SDL2 (video needed for window; audio is handled by miniaudio)
+	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0)
 	{
-		MessageBox(NULL,"This program requires Windows NT!",szAppName,MB_ICONERROR);
-		return 0;
+		fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
+		return 1;
 	}
 
-	hwnd = CreateWindow(szAppName,				// window class name
-		                "The Last Crusade",		// window caption
-						WS_OVERLAPPEDWINDOW,	// window style
-						CW_USEDEFAULT,			// initial x position
-						CW_USEDEFAULT,			// initial y position
-						400,					// initial x size
-						200,					// initial y size
-						NULL,					// parent window handle
-						NULL,					// window menu handle
-						hInstance,				// program instance handle
-						NULL);					// creation parameters
-	ShowWindow(hwnd,iCmdShow);
-	UpdateWindow(hwnd);
+	// Change working directory to where the game assets live:
+	//   macOS .app  -> Contents/Resources/
+	//   Linux/Win   -> directory containing the executable
+	// All relative asset paths in the engine resolve from here.
+	{
+		char *basePath = SDL_GetBasePath();
+		if(basePath)
+		{
+			CHDIR(basePath);
+			SDL_free(basePath);
+		}
+	}
 
-	// Start game
+	// Create a minimal window (the game is audio-only; window exists only
+	// so the OS gives us a keyboard-focus target)
+	SDL_Window *window = SDL_CreateWindow(
+		"The Last Crusade",
+		SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+		400, 200,
+		SDL_WINDOW_SHOWN);
+	if(!window)
+	{
+		fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
+		SDL_Quit();
+		return 1;
+	}
+
+	// Draw the title text in the window
+	SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
+	if(renderer)
+	{
+		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		SDL_RenderClear(renderer);
+		SDL_RenderPresent(renderer);
+	}
+
+	// Start the game (plays intro music / shows main menu)
 	game.play();
 
-	while(GetMessage(&msg,NULL,0,0))
+	// Main event loop: wait for events and forward key presses to the engine
+	SDL_Event event;
+	while(SDL_WaitEvent(&event))
 	{
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+		if(event.type == SDL_QUIT) break;
+		if(event.type == SDL_KEYUP)
+			game.processKey(translateKey(event.key.keysym.sym));
 	}
-	return msg.wParam;
-}
 
-// Handles Windows messages
-LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-	HDC hdc;
-	PAINTSTRUCT ps;
-	RECT rect;
-
-	switch(message)
-	{
-		case WM_CREATE:
-			return 0;
-		case WM_KEYUP:
-			// Send key to engine
-			game.processKey(wParam);
-			return 0;
-		case WM_PAINT:
-			hdc = BeginPaint(hwnd,&ps);
-			GetClientRect(hwnd,&rect);
-			DrawText(hdc,"The Last Crusade",-1,&rect,DT_SINGLELINE | DT_CENTER | DT_VCENTER);
-			EndPaint(hwnd,&ps);
-			return 0;
-		case WM_DESTROY:
-			PostQuitMessage(0);
-			exit(0);
-			return 0;
-	}
-	return DefWindowProc(hwnd,message,wParam,lParam);
+	// Cleanup
+	if(renderer) SDL_DestroyRenderer(renderer);
+	SDL_DestroyWindow(window);
+	SDL_Quit();
+	return 0;
 }

@@ -21,30 +21,26 @@ class NumberReader
 NumberReader::NumberReader()
 {
 	// Path to sounds
-	string path = ".\\numbers\\";
+	string path = "./numbers/";
 	int i;
 	// Load numbers 0 to 19
 	for(i = 0; i<20; i++)
 	{
 		string file = path;
-		char num[3];
-		itoa(i,num,10);
-		file+=num;
-		file+=".wav";
+		file += to_string(i);
+		file += ".wav";
 		low.push_back(new Sound(file));
 	}
 	// Load numbers 20-90 (tens)
 	for(i = 0; i<8; i++)
 	{
 		string file = path;
-		char num[3];
-		itoa(i+2,num,10);
-		file+=num;
-		file+="0.wav";
+		file += to_string(i+2);
+		file += "0.wav";
 		tens.push_back(new Sound(file));
 	}
 	// Load "hundred"
-	hundred = new Sound(".\\numbers\\hundred.wav");
+	hundred = new Sound("./numbers/hundred.wav");
 }
 
 // Destructor: Deallocate sounds

@@ -182,7 +182,7 @@ Game::Game()										//
 	first = true;									//
 	custom = false;									//
 	// Load main game sounds						//
-	string s = ".\\sounds\\";						//
+	string s = "./sounds/";							//
 	// Intro										//
 	theme = new Sound(s+"main_theme.mp3");			//
 	title = new Sound(s+"title.wav");				//
@@ -1318,9 +1318,10 @@ void Game::saveGame()
 // saveItem: Copy individual item into PLAYERITEM form
 void Game::saveItem(Item *item,PLAYERITEM &pi)
 {
+	int i;
 	// Set name
 	string strItem = item->getName();
-	for(int i = 0; i<strItem.length(); i++)
+	for(i = 0; i<strItem.length(); i++)
 		pi.piName[i] = strItem[i];
 	pi.piName[i] = '\0';
 	// Set type

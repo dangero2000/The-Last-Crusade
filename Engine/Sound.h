@@ -2,15 +2,17 @@
  *  Class: Sound										*
  *     By: Peter S. VanLund								*
  *   Desc: Contains all methods for creating & playing	*
- *         sounds (spatial or traditional stereo) with	*
- *         FMOD.										*
+ *         sounds (spatial or traditional stereo).		*
+ *         Uses miniaudio for cross-platform audio		*
+ *         (Windows, Mac, Linux) with WAV/MP3 support	*
+ *         and 3D spatial audio.						*
  ********************************************************/
 
-
-#include <fmod.h>
-#include <fmod_errors.h>
-#include <windows.h>
+#define MINIAUDIO_IMPLEMENTATION
+#include <miniaudio.h>
+#include <SDL2/SDL.h>
 #include <vector>
+#include <string>
 #include "MyWin.h"
 
 using namespace std;
@@ -18,23 +20,23 @@ using namespace std;
 class Sound
 {
 	private:
-		FSOUND_SAMPLE *sound;				// FMOD sample
-		int channel;						// FMOD channel
+		ma_sound maSound;					// miniaudio sound object
+		bool     loaded;					// Whether sound loaded successfully
 		int posX, posY;						// Position of sound
-		bool spatial;						// Spatial boolen
+		bool spatial;						// Spatial boolean
 		static int listenerX, listenerY;	// Listener location
 		string filepath;					// Path to sound file
+		static ma_engine engine;			// Shared audio engine (one per process)
+		static bool engineInited;			// Whether engine has been initialized
 	public:
 		Sound();							// Blank constructor
 		Sound(string);						// Constructor taking path
-		Sound(string,int,int);				// Constructor taking path & pos
+		Sound(string,int,int);				// Constructor taking path & position
 		~Sound();							// Destructor
-		static void init();					// FMOD initialization
-		static void shutdown();				// FMOD shutdown
+		static void init();					// Initialize audio engine
+		static void shutdown();				// Shutdown audio engine
 		static void setListener(int,int);	// Set listener position
 		bool operator==(Sound);				// Equality of sounds
-		FSOUND_SAMPLE* getSample();			// Get FMOD sample
-		int getChannel();					// Get FMOD channel
 		int getPosX();						// Get x-coord position
 		int getPosY();						// Get y-coord position
 		string getPath();					// Get path to sound file
@@ -47,15 +49,17 @@ class Sound
 		void stop();						// Stop sound
 		void fadeOut();						// Fade sound out
 		bool isPlaying();					// Playing test
-		void setVolume(int);				// Set sound volume
+		void setVolume(int);				// Set sound volume (0-255)
 };
 
-// Set initial listener position
-int Sound::listenerX = 0;
-int Sound::listenerY = 0;
+// Static member definitions
+int  Sound::listenerX   = 0;
+int  Sound::listenerY   = 0;
+ma_engine Sound::engine;
+bool Sound::engineInited = false;
 
 // Blank constructor
-Sound::Sound(){}
+Sound::Sound() : loaded(false), spatial(false), posX(0), posY(0) {}
 
 //////////////////////////////////////////////////////////////////////////////////////////
 //         Constructor given path: Loads sample for traditional stereo playing          //
@@ -63,19 +67,15 @@ Sound::Sound(){}
 Sound::Sound(string path)																//
 {																						//
 	filepath = path;																	//
-	channel = -1;																		//
-	// Load sample																		//
-	sound = FSOUND_Sample_Load(FSOUND_FREE,path.c_str(),FSOUND_HW2D,0,0);				//
-																						//
-	// If problem, report error															//
-	if(!sound)																			//
-	{																					//
-		// DEBUG:																		//
-		//MessageBox(NULL,FMOD_ErrorString(FSOUND_GetError()), "Sound File Error", 0);	//
-		return;																			//
-	}																					//
-	// Set sound properties																//
-	spatial = false;																	//
+	loaded   = false;																	//
+	spatial  = false;																	//
+	posX = posY = 0;																	//
+	if(!engineInited) return;															//
+	ma_result result = ma_sound_init_from_file(&engine, path.c_str(),					//
+	                                            0, NULL, NULL, &maSound);				//
+	if(result != MA_SUCCESS) return;													//
+	ma_sound_set_spatialization_enabled(&maSound, MA_FALSE);							//
+	loaded = true;																		//
 }																						//
 //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -85,34 +85,50 @@ Sound::Sound(string path)																//
 Sound::Sound(string path, int x, int y)													//
 {																						//
 	filepath = path;																	//
-	channel = -1;																		//
-	// Load sample																		//
-	sound = FSOUND_Sample_Load(FSOUND_FREE,path.c_str(),FSOUND_HW3D,0,0);				//
-																						//
-	// If problem, report error															//
-	if(!sound)																			//
-	{																					//
-		// DEBUG:																		//
-		//MessageBox(NULL,FMOD_ErrorString(FSOUND_GetError()), "Sound File Error", 0);	//
-		return;																			//
-	}																					//
-	// Set sound properties																//
-	FSOUND_Sample_SetMinMaxDistance(sound,0.0f,10000.0f);								//
-	spatial = true;																		//
-	posX = x; posY = y;																	//
+	loaded   = false;																	//
+	spatial  = true;																	//
+	posX = x; posY = y;																//
+	if(!engineInited) return;															//
+	ma_result result = ma_sound_init_from_file(&engine, path.c_str(),					//
+	                                            0, NULL, NULL, &maSound);				//
+	if(result != MA_SUCCESS) return;													//
+	ma_sound_set_spatialization_enabled(&maSound, MA_TRUE);								//
+	ma_sound_set_position(&maSound, (float)x, 0.0f, (float)y);							//
+	ma_sound_set_min_distance(&maSound, 0.0f);											//
+	ma_sound_set_max_distance(&maSound, 10000.0f);										//
+	loaded = true;																		//
 }																						//
 //////////////////////////////////////////////////////////////////////////////////////////
 
 Sound::~Sound()
 {
-	if(sound) FSOUND_Sample_Free(sound);
-};
+	if(loaded)
+	{
+		if(ma_sound_is_playing(&maSound)) ma_sound_stop(&maSound);
+		ma_sound_uninit(&maSound);
+	}
+}
 
 //////////////////////////////////////////////////
-//           init & shutdown of FMOD            //
+//        init & shutdown of audio engine       //
 //////////////////////////////////////////////////
-void Sound::init(){FSOUND_Init(44100,16,0);}	//
-void Sound::shutdown(){FSOUND_Close();}			//
+void Sound::init()																		//
+{																						//
+	if(!engineInited)																	//
+	{																					//
+		ma_engine_config cfg = ma_engine_config_init();									//
+		ma_engine_init(&cfg, &engine);													//
+		engineInited = true;															//
+	}																					//
+}																						//
+void Sound::shutdown()																	//
+{																						//
+	if(engineInited)																	//
+	{																					//
+		ma_engine_uninit(&engine);														//
+		engineInited = false;															//
+	}																					//
+}																						//
 //////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -120,11 +136,10 @@ void Sound::shutdown(){FSOUND_Close();}			//
 //////////////////////////////////////////////////////////////////////////////////
 void Sound::setListener(int x, int y)											//
 {																				//
-	listenerX=x;listenerY=y;													//
-	float pos[] = {listenerX,0,listenerY};										//
-	float vel[] = {0,0,0};														//
-	FSOUND_3D_Listener_SetAttributes(pos,vel,0.0f,0.0f,1.0f,0.0f,1.0f,0.0f);	//
-	FSOUND_Update();															//
+	listenerX = x; listenerY = y;												//
+	if(engineInited)															//
+		ma_engine_listener_set_position(&engine, 0,								//
+		                                (float)x, 0.0f, (float)y);				//
 }																				//
 //////////////////////////////////////////////////////////////////////////////////
 
@@ -133,16 +148,15 @@ void Sound::setListener(int x, int y)											//
 //////////////////////////////////////////////////////////////////////////////////
 bool Sound::operator==(Sound s)													//
 {																				//
-	return (sound==s.getSample() && channel==s.getChannel() &&					//
-		    posX==s.getPosX() && posY==s.getPosY() && spatial==s.isSpatial());	//
+	return (filepath == s.getPath() &&											//
+		    posX == s.getPosX() && posY == s.getPosY() &&						//
+		    spatial == s.isSpatial());											//
 }																				//
 //////////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////
 //             Sound querying functions             //
 //////////////////////////////////////////////////////
-FSOUND_SAMPLE* Sound::getSample(){return sound;}	//
-int Sound::getChannel(){return channel;}			//
 int Sound::getPosX(){return posX;}					//
 int Sound::getPosY(){return posY;}					//
 string Sound::getPath(){return filepath;}			//
@@ -154,22 +168,21 @@ bool Sound::isSpatial(){return spatial;}			//
 //////////////////////////////////////////////////////////////////////////
 void Sound::play(bool loop)												//
 {																		//
-	if(sound && !isPlaying())											//
+	if(!loaded || isPlaying()) return;									//
+	ma_sound_set_looping(&maSound, loop ? MA_TRUE : MA_FALSE);			//
+	ma_sound_seek_to_pcm_frame(&maSound, 0);							//
+	if(!spatial)														//
 	{																	//
-		if(loop) FSOUND_Sample_SetMode(sound,FSOUND_LOOP_NORMAL);		//
-		else     FSOUND_Sample_SetMode(sound,FSOUND_LOOP_OFF);			//
-		stop();															//
-		channel = FSOUND_PlaySoundEx(FSOUND_FREE,sound,NULL,spatial);	//
-		if(!spatial) FSOUND_SetVolume(channel, 255);					//
-		else															//
-		{																//
-			FSOUND_SetVolume(channel,32);								//
-			float pos[] = {posX,0,posY};								//
-			float vel[] = {0,0,0};										//
-			FSOUND_3D_SetAttributes(channel,pos,vel);					//
-			FSOUND_SetPaused(channel,false);							//
-		}																//
+		ma_sound_set_spatialization_enabled(&maSound, MA_FALSE);		//
+		ma_sound_set_volume(&maSound, 1.0f);							//
 	}																	//
+	else																//
+	{																	//
+		ma_sound_set_spatialization_enabled(&maSound, MA_TRUE);			//
+		ma_sound_set_position(&maSound, (float)posX, 0.0f, (float)posY);//
+		ma_sound_set_volume(&maSound, 32.0f / 255.0f);					//
+	}																	//
+	ma_sound_start(&maSound);											//
 }																		//
 //////////////////////////////////////////////////////////////////////////
 
@@ -178,11 +191,11 @@ void Sound::play(bool loop)												//
 //////////////////////////////////////////
 bool Sound::playAndWait(bool skip)		//
 {										//
-	// Return whether sound was skipped	//
 	bool ret = false;					//
 	play(false);						//
 	while(isPlaying())					//
 	{									//
+		SDL_Delay(1);					//
 		WPARAM key = MyWin::getKey();	//
 		if(skip && key=='F')			//
 		{								//
@@ -228,9 +241,9 @@ WPARAM Sound::playAndGet123()			//
 //////////////////////////////////
 void Sound::stop()				//
 {								//
-	if(channel==-1) return;		//
-	FSOUND_StopSound(channel);	//
-	channel = -1;				//
+	if(!loaded) return;			//
+	ma_sound_stop(&maSound);	//
+	ma_sound_seek_to_pcm_frame(&maSound, 0);	//
 }								//
 //////////////////////////////////
 
@@ -239,14 +252,15 @@ void Sound::stop()				//
 //////////////////////////////////////////////
 void Sound::fadeOut()						//
 {											//
-	if(channel==-1) return;					//
-	int vol = FSOUND_GetVolume(channel);	//
-	int dec = vol/10;						//
-	while(vol>0)							//
+	if(!isPlaying()) return;				//
+	float vol = ma_sound_get_volume(&maSound);	//
+	float dec = vol / 10.0f;				//
+	while(vol > 0.01f)						//
 	{										//
-		vol-=dec;							//
-		setVolume(vol);						//
-		Sleep(150);							//
+		vol -= dec;							//
+		if(vol < 0.0f) vol = 0.0f;			//
+		ma_sound_set_volume(&maSound, vol);	//
+		SDL_Delay(150);						//
 		MyWin::DoEvents();					//
 	}										//
 	if(isPlaying()) stop();					//
@@ -258,8 +272,8 @@ void Sound::fadeOut()						//
 //////////////////////////////////////////
 bool Sound::isPlaying()					//
 {										//
-	if(channel==-1) return false;		//
-	return FSOUND_IsPlaying(channel)>0;	//
+	if(!loaded) return false;			//
+	return ma_sound_is_playing(&maSound) == MA_TRUE;	//
 }										//
 //////////////////////////////////////////
 
@@ -268,6 +282,7 @@ bool Sound::isPlaying()					//
 //////////////////////////////////////////////////////
 void Sound::setVolume(int v)						//
 {													//
-	if(channel!=-1) FSOUND_SetVolume(channel, v);	//
+	if(loaded)										//
+		ma_sound_set_volume(&maSound, v / 255.0f);	//
 }													//
 //////////////////////////////////////////////////////
