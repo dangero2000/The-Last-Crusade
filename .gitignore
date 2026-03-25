@@ -1,0 +1,26 @@
+# Claude Code
+.claude/
+
+# Build artifacts in Build/ directory
+# (Keep game assets: *.map, *sounds/, numbers/)
+Build/CMakeCache.txt
+Build/CMakeFiles/
+Build/Makefile
+Build/_deps/
+Build/cmake_install.cmake
+Build/LastCrusade.app/
+Build/*.exe
+Build/*.dll
+
+# Crash reports
+*.rtf
+
+# macOS
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

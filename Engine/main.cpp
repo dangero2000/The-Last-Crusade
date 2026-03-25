@@ -18,8 +18,6 @@
 #define CHDIR chdir
 #endif
 
-Game game; // Game engine object
-
 // Translate SDL2 key event to engine key code.
 // Letters arrive as lowercase from SDL; convert to uppercase so the
 // engine's switch/case comparisons (e.g. case 'Y':) work correctly.
@@ -42,20 +40,6 @@ static WPARAM translateKey(SDL_Keycode sym)
 
 int main(int argc, char* argv[])
 {
-	// If a map file is passed on the command line, load it as a custom map
-	if(argc > 1 && strlen(argv[1]) > 0)
-	{
-		game.addMap(argv[1]);
-		game.useCustom();
-	}
-	// Otherwise, play the game normally
-	else
-	{
-		game.addMap("forest.map");
-		game.addMap("graveyard.map");
-		game.addMap("castle.map");
-	}
-
 	// Initialise SDL2 (video needed for window; audio is handled by miniaudio)
 	if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0)
 	{
@@ -71,9 +55,35 @@ int main(int argc, char* argv[])
 		char *basePath = SDL_GetBasePath();
 		if(basePath)
 		{
+#ifdef __APPLE__
+			// SDL_GetBasePath() returns Contents/MacOS/ on macOS; step up
+			// one level then into Resources/ to reach the asset directory.
+			char resourcePath[1024];
+			snprintf(resourcePath, sizeof(resourcePath), "%s../Resources", basePath);
+			CHDIR(resourcePath);
+#else
+			// On Linux/Windows, assets are in the same directory as the executable
 			CHDIR(basePath);
+#endif
 			SDL_free(basePath);
 		}
+	}
+
+	// Create game object AFTER changing working directory so sounds can be loaded
+	Game game;
+
+	// If a map file is passed on the command line, load it as a custom map
+	if(argc > 1 && strlen(argv[1]) > 0)
+	{
+		game.addMap(argv[1]);
+		game.useCustom();
+	}
+	// Otherwise, play the game normally
+	else
+	{
+		game.addMap("forest.map");
+		game.addMap("graveyard.map");
+		game.addMap("castle.map");
 	}
 
 	// Create a minimal window (the game is audio-only; window exists only

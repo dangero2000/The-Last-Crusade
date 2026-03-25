@@ -77,9 +77,15 @@ if(APPLE)
         COMMENT "Bundling dylibs into LastCrusade.app"
         VERBATIM)
 
+    # Re-sign after fixup_bundle modifies the binary (which invalidates
+    # any existing signature). Ad-hoc signing satisfies Gatekeeper.
+    add_custom_command(TARGET LastCrusade POST_BUILD
+        COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:LastCrusade>"
+        COMMENT "Code signing LastCrusade.app"
+        VERBATIM)
+
     # Assets go into Contents/Resources/ inside the bundle.
-    # SDL_GetBasePath() in main.cpp returns this path at runtime, so all
-    # relative asset paths in the engine resolve correctly.
+    # SDL_GetBasePath() + ../Resources in main.cpp resolves here at runtime.
     set(ASSET_DEST "$<TARGET_BUNDLE_CONTENT_DIR:LastCrusade>/Resources")
 else()
     # On Linux / Windows assets sit next to the executable.
@@ -90,6 +96,14 @@ endif()
 # ─── Copy game assets at build time ──────────────────────────────────────────
 
 set(BUILD_ASSETS_DIR "${CMAKE_SOURCE_DIR}/Build")
+
+# Ensure the Resources directory exists on macOS before copying into it
+if(APPLE)
+    add_custom_command(TARGET LastCrusade POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${ASSET_DEST}"
+        COMMENT "Creating Resources directory"
+        VERBATIM)
+endif()
 
 # Map files
 file(GLOB MAP_FILES "${BUILD_ASSETS_DIR}/*.map")
