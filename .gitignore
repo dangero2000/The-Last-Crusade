@@ -2,15 +2,29 @@
 .claude/
 
 # Build artifacts in Build/ directory
-# (Keep game assets: *.map, *sounds/, numbers/)
+# (Keep game assets: *.map, *sounds/, numbers/, Map Maker.exe, VBDependencies/)
 Build/CMakeCache.txt
 Build/CMakeFiles/
 Build/Makefile
 Build/_deps/
 Build/cmake_install.cmake
 Build/LastCrusade.app/
-Build/*.exe
-Build/*.dll
+Build/Debug/
+Build/Release/
+Build/x64/
+Build/*.sln
+Build/*.vcxproj
+Build/*.vcxproj.filters
+Build/*.dir/
+Build/ALL_BUILD*
+Build/INSTALL*
+Build/ZERO_CHECK*
+Build/LastCrusade.exe
+Build/LastCrusade.pdb
+Build/fmod.dll
+
+# Save files
+*.sav
 
 # Crash reports
 *.rtf
