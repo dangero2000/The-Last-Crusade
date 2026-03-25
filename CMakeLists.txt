@@ -6,12 +6,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ─── Dependencies ────────────────────────────────────────────────────────────
 
+include(FetchContent)
+
 # SDL2 – window creation and keyboard input
-find_package(SDL2 REQUIRED)
+# Downloaded automatically by CMake on first configure.
+FetchContent_Declare(
+    SDL2
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+    GIT_TAG        release-2.30.12
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(SDL2)
 
 # miniaudio – single-header cross-platform audio (WAV, MP3, 3D spatial)
 # Downloaded automatically by CMake on first configure.
-include(FetchContent)
 FetchContent_Declare(
     miniaudio
     GIT_REPOSITORY https://github.com/mackron/miniaudio.git
@@ -26,11 +34,10 @@ add_executable(LastCrusade Engine/main.cpp)
 
 target_include_directories(LastCrusade PRIVATE
     Engine/
-    ${SDL2_INCLUDE_DIRS}
     ${miniaudio_SOURCE_DIR}   # provides miniaudio.h
 )
 
-target_link_libraries(LastCrusade PRIVATE ${SDL2_LIBRARIES})
+target_link_libraries(LastCrusade PRIVATE SDL2::SDL2 SDL2::SDL2main)
 
 # Platform-specific libraries required by miniaudio's backends
 if(APPLE)
@@ -53,19 +60,9 @@ if(APPLE)
         MACOSX_BUNDLE_GUI_IDENTIFIER       "com.thelastcrusade.game"
     )
 
-    # Resolve SDL2's library directory so BundleFixup.cmake can find it.
-    # Handles both the modern SDL2::SDL2 imported target and the legacy
-    # SDL2_LIBRARIES / SDL2_LIBRARY_DIRS variables.
-    if(TARGET SDL2::SDL2)
-        get_target_property(_sdl2_loc SDL2::SDL2 IMPORTED_LOCATION)
-        get_filename_component(SDL2_LIBDIR "${_sdl2_loc}" DIRECTORY)
-    elseif(SDL2_LIBRARY_DIRS)
-        set(SDL2_LIBDIR "${SDL2_LIBRARY_DIRS}")
-    else()
-        # Last-resort: derive from SDL2_LIBRARIES list
-        list(GET SDL2_LIBRARIES 0 _sdl2_first)
-        get_filename_component(SDL2_LIBDIR "${_sdl2_first}" DIRECTORY)
-    endif()
+    # Resolve SDL2's library directory so BundleFixup.cmake can find the dylib.
+    get_target_property(_sdl2_loc SDL2::SDL2 LOCATION)
+    get_filename_component(SDL2_LIBDIR "${_sdl2_loc}" DIRECTORY)
 
     # Copy all required dylibs (SDL2, etc.) into Contents/Frameworks/ and
     # rewrite their install names so the .app works without Homebrew.
