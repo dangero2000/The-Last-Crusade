@@ -233,7 +233,10 @@ Item* Player::getSpecial(int i)				//
 void Player::playSpecialItemNames()				//
 {												//
 	for(int i = 0; i<vecSpecial.size(); i++)	//
+	{											//
 		vecSpecial[i]->playNameSound();			//
+		Sound::resetSkip();						//
+	}											//
 }												//
 //////////////////////////////////////////////////
 

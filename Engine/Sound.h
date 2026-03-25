@@ -28,6 +28,7 @@ class Sound
 		string filepath;					// Path to sound file
 		static ma_engine engine;			// Shared audio engine (one per process)
 		static bool engineInited;			// Whether engine has been initialized
+		static bool skipping;				// True while F-skip is active for this sequence
 	public:
 		Sound();							// Blank constructor
 		Sound(string);						// Constructor taking path
@@ -36,6 +37,7 @@ class Sound
 		static void init();					// Initialize audio engine
 		static void shutdown();				// Shutdown audio engine
 		static void setListener(int,int);	// Set listener position
+		static void resetSkip();			// Clear F-skip flag (call at start of each action)
 		bool operator==(Sound);				// Equality of sounds
 		int getPosX();						// Get x-coord position
 		int getPosY();						// Get y-coord position
@@ -57,6 +59,7 @@ int  Sound::listenerX   = 0;
 int  Sound::listenerY   = 0;
 ma_engine Sound::engine;
 bool Sound::engineInited = false;
+bool Sound::skipping     = false;
 
 // Blank constructor
 Sound::Sound() : loaded(false), spatial(false), posX(0), posY(0) {}
@@ -143,6 +146,12 @@ void Sound::setListener(int x, int y)											//
 }																				//
 //////////////////////////////////////////////////////////////////////////////////
 
+//////////////////////////////////////////////////////
+//   resetSkip: Clear F-skip flag for next action  //
+//////////////////////////////////////////////////////
+void Sound::resetSkip() { skipping = false; }		//
+//////////////////////////////////////////////////////
+
 //////////////////////////////////////////////////////////////////////////////////
 //                     operator==: Tests equality of sounds                     //
 //////////////////////////////////////////////////////////////////////////////////
@@ -191,14 +200,16 @@ void Sound::play(bool loop)												//
 //////////////////////////////////////////
 bool Sound::playAndWait(bool skip)		//
 {										//
+	if(skipping) return true;			// Already skipping this sequence
 	bool ret = false;					//
 	play(false);						//
 	while(isPlaying())					//
 	{									//
 		SDL_Delay(1);					//
 		WPARAM key = MyWin::getKey();	//
-		if(skip && key=='F')			//
+		if(key=='F')					// F always skips
 		{								//
+			skipping = true;			//
 			ret = true;					//
 			break;						//
 		}								//
@@ -213,6 +224,7 @@ bool Sound::playAndWait(bool skip)		//
 //////////////////////////////////////////
 WPARAM Sound::playAndGetYorN()			//
 {										//
+	skipping = false;					// Questions always play fresh — not skippable
 	play(false);						//
 	WPARAM key = MyWin::getYorN();		//
 	if(isPlaying()) stop();				//
@@ -221,6 +233,7 @@ WPARAM Sound::playAndGetYorN()			//
 //////////////////////////////////////////
 WPARAM Sound::playAndGetYorNRun()		//
 {										//
+	skipping = false;					//
 	play(false);						//
 	WPARAM key = MyWin::getYorNRun();	//
 	if(isPlaying()) stop();				//
@@ -229,6 +242,7 @@ WPARAM Sound::playAndGetYorNRun()		//
 //////////////////////////////////////////
 WPARAM Sound::playAndGet123()			//
 {										//
+	skipping = false;					//
 	play(false);						//
 	WPARAM key = MyWin::get123();		//
 	if(isPlaying()) stop();				//

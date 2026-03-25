@@ -380,6 +380,7 @@ void Game::processKey(WPARAM key)													//
 	WPARAM skey = 0;																//
 	if(pkey) return;																//
 	pkey = true;																	//
+	Sound::resetSkip();				// Clear F-skip state at start of each action	//
 	// keys:																		//
 	// VK_A-VK_Z for letters														//
 	// VK_RETURN, VK_SPACE, VK_UP etc												//
@@ -600,11 +601,13 @@ void Game::processKey(WPARAM key)													//
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Game::exploreNode()																				//
 {																										//
+	Sound::resetSkip();						// New scene 窶・clear any in-flight F-skip				//
 	// End of map																						//
 	if(vecMap[current]->atEndOfMap())																	//
 	{																									//
 		vecMap[current]->deactivate();																	//
 		if(custom) exit(0);																				//
+		song = NULL;	// song points into the old map's vecSound; null before freeing				//
 		vecMap[current]->freeMap();																		//
 		// Proceed to next map																			//
 		current++;																						//
@@ -638,10 +641,13 @@ void Game::exploreNode()																				//
 		enemy = node->getNPC();																			//
 		// "You have encountered [ENEMY]"																//
 		encounter->playAndWait(false); enemy->playNameSound();											//
+		Sound::resetSkip();																				//
 		// "His attack is [STRENGTH]"																	//
 		attack->playAndWait(false); nr->say(enemy->getStr());											//
+		Sound::resetSkip();																				//
 		// "His defense is [DEFENSE]"																	//
 		defense->playAndWait(false); nr->say(enemy->getDef());											//
+		Sound::resetSkip();																				//
 		// "He has [HIT POINTS] hit points"																//
 		hehas->playAndWait(false); nr->say(enemy->getHP());												//
 		if(enemy->getHP()==1) hitpoint->playAndWait(false);												//
@@ -688,6 +694,7 @@ void Game::exploreNode()																				//
 				   (newItem->getType()==ARMOR  && newItem->getValue()<=player.getDef())) continue;		//
 				int cost = (newItem->getType()==POTION) ? vendor->getDef()*newItem->getValue()			//
 					                                    : vendor->getStr()*newItem->getValue();			//
+				Sound::resetSkip();																		//
 				// "Would you like to purchase [ITEM] for [GOLD] gold pieces"							//
 				purchase->playAndWait(false); newItem->playNameSound();									//
 				if(newItem->getType()==WEAPON || newItem->getType()==ARMOR)								//
@@ -754,6 +761,7 @@ void Game::exploreNode()																				//
 					if(MyWin::getYorN()=='Y')															//
 					{																					//
 						player.addItem(newItem);														//
+						Sound::resetSkip();															//
 						// "You have equipped [ITEM]"													//
 						equipped->playAndWait(false); newItem->playNameSound();							//
 						frnd->removeItem(i);															//
@@ -782,6 +790,7 @@ void Game::exploreNode()																				//
 		NPC *lep = node->getNPC();																		//
 		// "You have encountered [a leprechaun]"														//
 		encounter->playAndWait(false); leprechaun->playAndWait(false);									//
+		Sound::resetSkip();																				//
 		// Player agrees to play game																	//
 		if(lepplay->playAndGetYorN()=='Y')																//
 		{																								//
@@ -833,6 +842,7 @@ void Game::exploreNode()																				//
 					readGold();																			//
 					if(lepagain->playAndGetYorN()=='N')													//
 					{																					//
+						Sound::resetSkip();																//
 						lepbye->playAndWait(false);														//
 						break;																			//
 					}																					//
@@ -846,7 +856,8 @@ void Game::exploreNode()																				//
 			if(Random::getShort(0,2)==0)																//
 			{																							//
 				lepmad->playAndWait(false);																//
-				lepgone->playAndWait(false);															//
+			Sound::resetSkip();																		//
+			lepgone->playAndWait(false);															//
 				player.subGold(player.getGold()/2);														//
 				readGold();																				//
 				node->removeNPC();																		//
@@ -906,6 +917,7 @@ void Game::searchNode()
 				if(MyWin::getYorN()=='Y')
 				{
 					player.addItem(newItem);
+					Sound::resetSkip();
 					// "You have equipped [ITEM]"
 					equipped->playAndWait(false); newItem->playNameSound();
 					node->removeItem(i);
@@ -930,7 +942,9 @@ void Game::searchNode()
 // enemyAttack: Enemy attacks player
 void Game::enemyAttack()
 {
+	Sound::resetSkip();		// New scene (can be called mid-sequence after runno/playerAttack)
 	enemy->playActionSound();
+	Sound::resetSkip();		// HP info always plays regardless of whether action sound was skipped
 	// Calculate total for attack value
 	int total = Random::getShort(0,enemy->getStr())+enemy->getStr()-player.getDef();
 	// Enemy hits
@@ -945,11 +959,13 @@ void Game::enemyAttack()
 		if(player.isDead() && !player.useUndeadElixir())
 		{
 			// Player dies and game returns to main menu
+			Sound::resetSkip();
 			playerDeath->playAndWait(false);
 			fightsong->fadeOut();
 			returnToMenu();
 			return;
 		}
+		Sound::resetSkip();
 		// "You now have [HIT POINTS] hit points remaining"
 		younow->playAndWait(false); nr->say(player.getHP());
 		if(player.getHP()==1) hitpointr->playAndWait(false);
@@ -967,6 +983,7 @@ void Game::enemyAttack()
 void Game::playerAttack()
 {
 	player.playWeaponAction();
+	Sound::resetSkip();
 	// Calculate attack total
 	int total = Random::getShort(0,player.getStr())+player.getStr()-enemy->getDef();
 	// "death blade" & "black talon" have chances of killing enemy in one hit
@@ -983,6 +1000,7 @@ void Game::playerAttack()
 		youattack->playAndWait(false); nr->say(total);
 		if(enemy->isDead())
 		{
+			Sound::resetSkip();
 			// "Victory"
 			victory->playAndWait(false);
 			// Get enemy items
@@ -999,6 +1017,7 @@ void Game::playerAttack()
 			state = MOVE;
 			return;
 		}
+		Sound::resetSkip();
 		// "Enemy now has [HIT POINTS] hit points remaining"
 		nowhas->playAndWait(false); nr->say(enemy->getHP());
 		if(enemy->getHP()==1) hitpointr->playAndWait(false);
@@ -1016,6 +1035,7 @@ void Game::playerAttack()
 // lootEnemy: Take all items from enemy
 void Game::lootEnemy()
 {
+	Sound::resetSkip();		// New scene 窶・victory/loot starts fresh
 	int n = enemy->getItemCount();
 	int i;
 	int g = player.getGold();
@@ -1031,6 +1051,7 @@ void Game::lootEnemy()
 		   (newItem->getType()==ARMOR  && newItem->getValue()<=player.getDef())) continue;
 		// "You have collected [ITEM]"
 		collected->playAndWait(false); newItem->playNameSound();
+		Sound::resetSkip();
 		if(newItem->getType()==WEAPON || newItem->getType()==ARMOR)
 		{
 			Item *item = (newItem->getType()==WEAPON) ? player.getWeapon() : player.getArmor();
@@ -1040,6 +1061,7 @@ void Game::lootEnemy()
 			if(MyWin::getYorN()=='Y')
 			{
 				player.addItem(newItem);
+				Sound::resetSkip();
 				// "You have equipped [ITEM]"
 				equipped->playAndWait(false); newItem->playNameSound();
 			}
@@ -1048,6 +1070,7 @@ void Game::lootEnemy()
 		{
 			player.addItem(newItem);
 		}
+		Sound::resetSkip();
 	}
 	// If gold has changed, read out new total
 	if(player.getGold()>g)
@@ -1141,32 +1164,33 @@ void Game::queryNode()
 // readStats: Read player stats & instructions
 void Game::readStats()
 {
-	if(sndStatStr->playAndWait(true)) return;
-	nr->say(player.getStr());
-	if(sndStatDef->playAndWait(true)) return;
-	nr->say(player.getDef());
-	if(younow->playAndWait(true)) return;
-	nr->say(player.getHP());
+	sndStatStr->playAndWait(false); nr->say(player.getStr());
+	Sound::resetSkip();
+	sndStatDef->playAndWait(false); nr->say(player.getDef());
+	Sound::resetSkip();
+	younow->playAndWait(false); nr->say(player.getHP());
 	if(player.getHP()==1) hitpoint->playAndWait(false);
 	else hitpoints->playAndWait(false);
-	if(younow->playAndWait(true)) return;
-	nr->say(player.getGold());
-	if(coins->playAndWait(true)) return;
-	if(younow->playAndWait(true)) return;
-	nr->say(player.getPotionCount());
+	Sound::resetSkip();
+	younow->playAndWait(false); nr->say(player.getGold()); coins->playAndWait(false);
+	Sound::resetSkip();
+	younow->playAndWait(false); nr->say(player.getPotionCount());
 	if(player.getPotionCount()==1) sndPotion->playAndWait(false);
 	else sndPotions->playAndWait(false);
 	if(player.getSpecialItemCount()>0)
 	{
-		if(younow->playAndWait(true)) return;
+		Sound::resetSkip();
+		younow->playAndWait(false);
 		player.playSpecialItemNames();
 	}
-	if(instruct->playAndWait(true)) return;
+	Sound::resetSkip();
+	instruct->playAndWait(false);
 }
 
 // readGold: Read gold amount of player
 void Game::readGold()
 {
+	Sound::resetSkip();
 	younow->playAndWait(false); nr->say(player.getGold()); coins->playAndWait(false);
 }
 
@@ -1230,6 +1254,7 @@ void Game::returnToMenu()
 	// Deactivate map, reset player, etc.
 	vecMap[current]->deactivate();
 	if(custom) exit(0);
+	song = NULL;	// song points into the map's vecSound; null it before freeing the map
 	vecMap[current]->freeMap();
 	player.freeSounds();
 	player.clearPlayer();
