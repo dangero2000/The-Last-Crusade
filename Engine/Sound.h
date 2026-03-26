@@ -38,6 +38,8 @@ class Sound
 		static void shutdown();				// Shutdown audio engine
 		static void setListener(int,int);	// Set listener position
 		static void resetSkip();			// Clear F-skip flag (call at start of each action)
+		static bool isSkipping();			// Check F-skip flag
+		static void setSkipping(bool);		// Set F-skip flag
 		bool operator==(Sound);				// Equality of sounds
 		int getPosX();						// Get x-coord position
 		int getPosY();						// Get y-coord position
@@ -149,7 +151,9 @@ void Sound::setListener(int x, int y)											//
 //////////////////////////////////////////////////////
 //   resetSkip: Clear F-skip flag for next action  //
 //////////////////////////////////////////////////////
-void Sound::resetSkip() { skipping = false; }		//
+void Sound::resetSkip()        { skipping = false; }	//
+bool Sound::isSkipping()       { return skipping;  }	//
+void Sound::setSkipping(bool s){ skipping = s;     }	//
 //////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////////

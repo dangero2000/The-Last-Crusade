@@ -7,6 +7,8 @@
  *         few sounds are included as well.				*
  ********************************************************/
 
+#include <future>
+#include <chrono>
 #include "Map.h"
 #include "GameStruct.h"
 
@@ -145,6 +147,11 @@ class Game
 		Sound *notstrong;		// Not strong enough
 		bool checkMove(Direction);	// Validate move
 		bool custom;			// Using custom map
+		std::future<void> loadFuture;		// Background map load future
+		void startLoad(int);				// Start background load for map index
+		bool isLoadDone();					// Check if background load is complete
+		void waitForLoad();					// Wait for load; play load sound on loop if needed
+		void playHeadingWithLoad(Sound*);	// Play heading+direction, blocking F until load done
 		void returnToMenu();	// Return to main menu
 		void equipWeakItems();	// Equip weakest weapon & armor in map
 		// Save & Load game
@@ -376,7 +383,6 @@ void Game::play()					//
 //////////////////////////////////////////////////////////////////////////////////////
 void Game::processKey(WPARAM key)													//
 {																					//
-	Map *map;																		//
 	WPARAM skey = 0;																//
 	if(pkey) return;																//
 	pkey = true;																	//
@@ -400,7 +406,8 @@ void Game::processKey(WPARAM key)													//
 				case '1':															//
 					menu->fadeOut();												//
 					theme->fadeOut();												//
-					// Read story													//
+					// Begin loading map while story plays							//
+					startLoad(0);													//
 					story->play(false);												//
 					first = true;													//
 					while(story->isPlaying() && skey!='F' && skey!=VK_SPACE)		//
@@ -408,16 +415,12 @@ void Game::processKey(WPARAM key)													//
 						skey = MyWin::getKey();										//
 					}																//
 					if(story->isPlaying()) story->fadeOut();						//
-					// Set start of game & load map									//
 					current = 0;													//
-					map = vecMap[current];											//
-					load->play(true);												//
-					map->loadMap();													//
-					equipWeakItems();												//
-					load->fadeOut();												//
 					entering->playAndWait(false);									//
-					map->sayMapName();												//
-					map->activate();												//
+					waitForLoad();													//
+					equipWeakItems();												//
+					vecMap[current]->sayMapName();									//
+					vecMap[current]->activate();									//
 					exploreNode();													//
 					break;															//
 				// Load saved game													//
@@ -428,10 +431,19 @@ void Game::processKey(WPARAM key)													//
 						nodata->playAndWait(false);									//
 						break;														//
 					}																//
+					// Peek at save to start loading the right map early			//
+					{																//
+						FILE *peek = fopen("player.sav","rb");						//
+						if(peek)													//
+						{														//
+							PLAYERHEADER ph;										//
+							fread(&ph,sizeof(PLAYERHEADER),1,peek);				//
+							fclose(peek);											//
+							startLoad(ph.pMap);										//
+						}														//
+					}																//
 					theme->fadeOut();												//
-					load->play(true);												//
 					loadGame();														//
-					load->fadeOut();												//
 					entering->playAndWait(false);									//
 					vecMap[current]->sayMapName();									//
 					first = false;													//
@@ -468,31 +480,47 @@ void Game::processKey(WPARAM key)													//
 				case VK_UP:															//
 					if(vecMap[current]->move(NORTH) && checkMove(NORTH))			//
 					{																//
-						if(!heading->playAndWait(true)) dNorth->playAndWait(true);	//
+						if(!custom && vecMap[current]->atEndOfMap()			//
+						   && current+1 < (int)vecMap.size())				//
+							startLoad(current+1);								//
+						if(loadFuture.valid()) playHeadingWithLoad(dNorth);		//
+						else if(!heading->playAndWait(true)) dNorth->playAndWait(true);	//
 						exploreNode();												//
 					}																//
 					break;															//
 				case VK_DOWN:														//
 					if(vecMap[current]->move(SOUTH) && checkMove(SOUTH))			//
 					{																//
-						if(!heading->playAndWait(true)) dSouth->playAndWait(true);	//
+						if(!custom && vecMap[current]->atEndOfMap()			//
+						   && current+1 < (int)vecMap.size())				//
+							startLoad(current+1);								//
+						if(loadFuture.valid()) playHeadingWithLoad(dSouth);		//
+						else if(!heading->playAndWait(true)) dSouth->playAndWait(true);	//
 						exploreNode();												//
 					}																//
-					break;															//
+	break;															//
 				case VK_RIGHT:														//
 					if(vecMap[current]->move(EAST) && checkMove(EAST))				//
 					{																//
-						if(!heading->playAndWait(true)) dEast->playAndWait(true);	//
+						if(!custom && vecMap[current]->atEndOfMap()			//
+						   && current+1 < (int)vecMap.size())				//
+							startLoad(current+1);								//
+						if(loadFuture.valid()) playHeadingWithLoad(dEast);		//
+						else if(!heading->playAndWait(true)) dEast->playAndWait(true);	//
 						exploreNode();												//
 					}																//
-					break;															//
+	break;															//
 				case VK_LEFT:														//
 					if(vecMap[current]->move(WEST) && checkMove(WEST))				//
 					{																//
-						if(!heading->playAndWait(true)) dWest->playAndWait(true);	//
+						if(!custom && vecMap[current]->atEndOfMap()			//
+						   && current+1 < (int)vecMap.size())				//
+							startLoad(current+1);								//
+						if(loadFuture.valid()) playHeadingWithLoad(dWest);		//
+						else if(!heading->playAndWait(true)) dWest->playAndWait(true);	//
 						exploreNode();												//
 					}																//
-					break;															//
+	break;															//
 				case 'S':															//
 					searchNode();													//
 					break;															//
@@ -611,11 +639,10 @@ void Game::exploreNode()																				//
 		vecMap[current]->freeMap();																		//
 		// Proceed to next map																			//
 		current++;																						//
-		if(current>vecMap.size()-1) exit(0);															//
-		load->play(true);																				//
-		vecMap[current]->loadMap();																		//
-		load->fadeOut();																				//
+		if(current>(int)vecMap.size()-1) exit(0);														//
+		if(!loadFuture.valid()) startLoad(current);	// start loading if not already underway	//
 		entering->playAndWait(false);																	//
+		waitForLoad();																					//
 		vecMap[current]->sayMapName();																	//
 		vecMap[current]->activate();																	//
 		first = true;																					//
@@ -1374,9 +1401,9 @@ void Game::loadGame()
 	PLAYERHEADER ph;
 	fread(&ph,sizeof(PLAYERHEADER),1,file);
 	current = ph.pMap;
-	vecMap[current]->loadMap();
-	Map *map = vecMap[current];
-	map->setCurrentNodeNumber(ph.pNode);
+	// Start loading if not already started by caller
+	if(!loadFuture.valid()) startLoad(current);
+	// Restore player data (doesn't need the loaded map yet)
 	player.setGold(ph.pGold);
 	player.setMaxHP(ph.pMaxHP);
 	player.setHP(ph.pHP);
@@ -1398,6 +1425,10 @@ void Game::loadGame()
 		item->freeSounds();
 		delete item;
 	}
+	// Wait for map to finish loading before restoring map-dependent state
+	waitForLoad();
+	Map *map = vecMap[current];
+	map->setCurrentNodeNumber(ph.pNode);
 	// Load state of all nodes for current map (Visisted & NPCs & Items)
 	for(i = 0; i<map->getNodeCount(); i++)
 	{
@@ -1489,4 +1520,68 @@ void Game::equipWeakItems()
 	// Add item to player
 	player.addItem(map->getItem(minW));
 	player.addItem(map->getItem(minA));
+}
+
+// startLoad: Begin loading a map on a background thread
+void Game::startLoad(int mapIdx)
+{
+	loadFuture = std::async(std::launch::async, [this, mapIdx]
+	{
+		vecMap[mapIdx]->loadMap();
+	});
+}
+
+// isLoadDone: True if no background load is pending or it has completed
+bool Game::isLoadDone()
+{
+	if(!loadFuture.valid()) return true;
+	return loadFuture.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready;
+}
+
+// waitForLoad: Block until background load completes.
+// If still loading, plays the loading sound on loop and stops it instantly when done.
+void Game::waitForLoad()
+{
+	if(!loadFuture.valid()) return;
+	if(!isLoadDone())
+	{
+		load->play(true);      // loop loading sound
+		loadFuture.get();      // block until done
+		load->stop();          // instant stop, no fade
+	}
+	else
+	{
+		loadFuture.get();      // collect result (clears valid state)
+	}
+}
+
+// playHeadingWithLoad: Play 'heading [direction]' while a background load is running.
+// F-skip is suppressed until loading finishes; after that F works normally.
+void Game::playHeadingWithLoad(Sound *dir)
+{
+	Sound *parts[2] = {heading, dir};
+	for(int p = 0; p < 2 && !Sound::isSkipping(); p++)
+	{
+		parts[p]->play(false);
+		while(parts[p]->isPlaying())
+		{
+			SDL_Delay(1);
+			if(isLoadDone())
+			{
+				// Load finished - F can now skip
+				WPARAM key = MyWin::getKey();
+				if(key == 'F')
+				{
+					Sound::setSkipping(true);
+					parts[p]->stop();
+					break;
+				}
+			}
+			else
+			{
+				MyWin::getKey(); // Drain key events without acting on F
+			}
+		}
+		if(parts[p]->isPlaying()) parts[p]->stop();
+	}
 }
